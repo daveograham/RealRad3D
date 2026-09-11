@@ -10,7 +10,7 @@ Clone https://github.com/Goobley/crtaf-py somewhere and install it to provide th
 ## Installation
 Clone the whole RealRad3D folder
 
-In config.py point the paths to your own install location
+In config.py point the paths to your own install location and model folder. ReadRad3D also assumes the model DexRT .yaml config file is stored at the same location
 
 There are some options in here for the number of wavelength samples, GUI and trace camera size, but be careful :-)
 
