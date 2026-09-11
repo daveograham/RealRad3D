@@ -16,6 +16,8 @@ There are some options in here for the number of wavelength samples, GUI and tra
 
 ## Starting
 Run start_tracer.py with the --path flag and location of your model's DexRT config .yaml
+
 e.g:
+
 python.exe c:/../RealRad3D/start_tracer.py --path "C:/../MyModel/model.yaml"
 
