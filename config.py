@@ -5,7 +5,7 @@ ELEMENT = 'Ca'
 LINEIDX = 0
 
 #The cloned package path
-TRACER_ROOT = "C:/Users/dg130t/Home/rttools/RealRad3D/"
+TRACER_ROOT = "your/path/here"
 
 if ELEMENT == 'Ca':
     ION_I0 = 9
