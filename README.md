@@ -32,4 +32,4 @@ Right click focuses the camera on the first contact point on the model
 
 F - focuses camera look at back on model centre
 
-H - re-sets everything to the home position
+H - resets everything to the home position
