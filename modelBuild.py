@@ -2,6 +2,7 @@ import taichi as ti
 import taichi.math as tm
 import numpy as np
 from taichi.math import vec2, vec3, vec4, ivec2, ivec3, ivec4
+import lightweaver as lw
 
 TI_ARCH = ti.gpu
 TI_FP = ti.f32
@@ -100,7 +101,7 @@ class TaiAtom:
 
 @ti.data_oriented
 class ModelSetup:
-    def __init__(self, ds, ps, constants, atomdata, lineindex, ATOM):
+    def __init__(self, ds, ps, constants, atomdata, dexcfg, lineindex, ATOM):
         if ds.program != "dexrt (3d)":
             print("Program tag does not appear to be \"dexrt (3d)\", are you sure this is the right file?")
         if ds.output_format != "sparse":
@@ -154,12 +155,26 @@ class ModelSetup:
         self.gamma = ti.field(dtype=TI_FP, shape=(self.num_active_tiles * self.block_size**3,))
         self.get_gamma(lineindex)
 
+
+        #GET SOME LEVEL INFO
+        atomkey = list(dexcfg['atoms'].keys())
+        Zs = {} #ARRANGE BY Z ORDER - AS THE POPULATIONS ARE ALWAYS ORDERED THIS WAY
+        for a in atomkey:
+            Zs[a] = (lw.PeriodicTable[a].Z)
+        #GET START INDEX ON THE POPS ARRAY SORTED BY Z
+        atomsorted = sorted(atomkey, key=lambda a:Zs[a])
+        start_lev = {}
+        end_lev = {}
+        start = 0
+        for i, a in enumerate(atomsorted):
+            #Z[a] = (lw.PeriodicTable[a].Z)
+            num_lev = ps.num_level[i]
+            start_lev[a] = start
+            end_lev[a] = start + num_lev
+            start += num_lev
         #POPULATIONS
-        #FOR CA II LEVELS ARE 20 ONWARDS [9 H, 11 Mg, 6 Ca]
         self.pops = ti.field(dtype=TI_FP, shape=(self.nlevels, self.num_active_tiles * self.block_size**3,))
-        # if ATOM == 'CaII':
-        #     self.pops.from_numpy(ps.pops.values[Ca:,:].astype(PY_FP))
-        self.pops.from_numpy(ps.pops.values[ION_I0:ION_I1,:].astype(PY_FP))
+        self.pops.from_numpy(ps.pops.values[start_lev[ELEMENT]:end_lev[ELEMENT],:].astype(PY_FP))
         #SOLAR BOUNDARY LOOKUP TABLE
         self.lookup_ax_lambda = ti.field(dtype=TI_FP, shape=(ds.prom_bc_wavelength.values.shape[0]))
         self.lookup_ax_mu = np.linspace(ds.prom_bc_mu_min.values, ds.prom_bc_mu_max.values, len(ds.prom_bc_mu.values))

@@ -57,11 +57,11 @@ if __name__ == "__main__":
     trslit = Slit(SLIT_RES, CAM_HEIGHT,(CAM_WIDTH/2, CAM_HEIGHT//2))
 
     #WAVELENGTH ARRAY
-    LINEIDX = 0
+    #LINEIDX = 0
     restwav = atompy["line_lambda0"][LINEIDX]
     print('TRACING FOR ',restwav)
 
-    model_cache = ModelSetup(ds, ps, Constants(), atomfield, LINEIDX, ATOM)
+    model_cache = ModelSetup(ds, ps, Constants(), atomfield, dexcfg, LINEIDX, ATOM)
     
     #CREATE A TRACEDEX3D OBJECT WITH A CUSTOM TRANSFER FUNCTION
     @ti.data_oriented
@@ -269,9 +269,6 @@ if __name__ == "__main__":
                 if e.key == 's':
                     print(pos.y)
                     print('Saved spectral profile')
-                if e.key == 'u':
-                    sticky_pixel = 0
-                    print('Unlock slit')
                 if e.key == 'f':
                     sticky_pixel = 0
                     target = target_centre
