@@ -1,19 +1,11 @@
 from taichi.math import vec2, vec3, vec4, ivec2, ivec3, ivec4
 
-ATOM = 'CaII'
-ELEMENT = 'Ca'
+ATOM = 'MgII'
+ELEMENT = 'Mg'
 LINEIDX = 0
 
 #The cloned package path
 TRACER_ROOT = "C:/Users/dg130t/Home/rttools/RealRad3D/"
-
-if ELEMENT == 'Ca':
-    ION_I0 = 9
-    ION_I1 = 15
-
-if ELEMENT == 'Mg':
-    ION_I0 = 9
-    ION_I1 = 20
 
 TRANSFER_CENTRE_VAL = 4
 TRANSFER_CENTRE_WIDTH = 0.1
