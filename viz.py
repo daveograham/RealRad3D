@@ -29,12 +29,13 @@ def tonemap(x: vec3) -> vec3:
 
     return ((x * (A*x + C*B) + D*E) / (x * (A*x + B) + D*F)) - E/F
 
-def tonemap_and_blit(trace_buffer, bias, white_point, gamma, blur, blur_buffer, blur_kernel, gui_buffer, VIEWER_AABB):
+def tonemap_and_blit(trace_buffer, bias, white_point, gamma, blur, blur_buffer, blur_kernel, gui_buffer, out_buffer, VIEWER_AABB):
     if blur > 1:
         compute_blur_kernel(blur, blur_kernel)
         blur_pass_horizontal(trace_buffer, blur_buffer, blur_kernel)
         blur_pass_vertical(blur_buffer, trace_buffer, blur_kernel)
     tonemap_buffer(trace_buffer, bias, white_point, gamma)
+    window_dump(trace_buffer, out_buffer)
     #if trace/cam buffer is the same size as window buffer copy, or interpolate if not
     if gui_buffer.shape == trace_buffer.shape:
         blit(trace_buffer)
@@ -51,6 +52,12 @@ def tonemap_buffer(trace_buffer: ti.template(), bias: ti.f32, white_scale: ti.f3
 def blit(trace_buffer: ti.template(), gui_buffer:ti.template()):
     for u, v in trace_buffer:
         gui_buffer[u, v] = trace_buffer[u, v]
+
+@ti.kernel
+def window_dump(current_buffer: ti.template(), out_buffer: ti.template()):
+    '''use to save current tone-mapped trace window before gui gets added'''
+    for u, v in current_buffer:
+        out_buffer[u, v] = current_buffer[u,v]
 
 @ti.kernel
 def bilinear_copy(trace_buffer: ti.template()):
@@ -190,7 +197,6 @@ def spectrum_to_frame_buffer(buffer_in:ti.template(), buffer_out:ti.template(), 
                 scaled = (tonemap(bias * samplepix) * white_scale)**(1.0 / gamma)
                 buffer_out[ii,jj] = scaled
 
-
 @ti.kernel
 def draw_slit(slit:ti.template(), slitdir:tm.vec2, buffer:ti.template(), window_aabb:vec4):
     '''Plot the intensity along the slit position - Run create slit first - draws on buffer field'''
@@ -214,7 +220,7 @@ def draw_slit(slit:ti.template(), slitdir:tm.vec2, buffer:ti.template(), window_
 def draw_slit_gui(slit:ti.template(), slitdir:tm.vec2, buffer:ti.template(), viewer_aabb:vec4, CAM_SIZE:ti.template(), VIEWER_SIZE:ti.template()):
     '''Plot the intensity along the slit position - Run create slit first - draws on buffer field'''
     midindex = tm.floor(slit.slit_field.shape[0]/2.0)
-    ndir = tm.normalize(slitdir)
+    ndir = tm.normalize(slit.dir[0])
     for i in slit.slit_field:
         getslit = slit.slit_field[i]
 
@@ -261,8 +267,6 @@ def draw_wing_markers(wavecenter: TI_INT, WAVESTEPS:TI_INT, wingidx: TI_INT, buf
                         buffer[xpix-1+b,ypix] = vec3(0.0, 1.0, 0.0)
                         buffer[xpix,ypix-1+b] = vec3(0.0, 1.0, 0.0)
 
-                    
-
 @ti.kernel
 def click_markers(loc: vec2, buffer:ti.template(), WINDOW_SIZE:ti.template()):
     xpix = ti.cast(loc.x*WINDOW_SIZE[0],dtype=TI_INT)+1
@@ -288,7 +292,6 @@ def clear_buffer(buffer_out:ti.template(), corners:ivec4, overflow:TI_INT):
         buffer_out[uwin,vwin] = vec3(0.0)
         buffer_out[uwin+overflow,vwin+overflow] = vec3(0.0)
         buffer_out[uwin-overflow,vwin-overflow] = vec3(0.0)
-
 
 @ti.kernel
 def draw_spectra_segment(buffer_in:ti.template(), buffer_out:ti.template(), pos: vec2, corners:ivec4, imin:TI_FP, imax:TI_FP, pstart:TI_INT) -> vec4:

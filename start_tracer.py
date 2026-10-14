@@ -54,15 +54,16 @@ if __name__ == "__main__":
     atompy = aload(ATOM_PATH)#, check64=True)
     atomfield = TaiAtom(atompy)
 
-    trslit = Slit(SLIT_RES, CAM_HEIGHT,(CAM_WIDTH/2, CAM_HEIGHT//2))
+    #SET UP SLIT
+    trslit = Slit(SLIT_RES, CAM_HEIGHT)
 
-    #WAVELENGTH ARRAY
-    #LINEIDX = 0
+    #TRACING LINE
     restwav = atompy["line_lambda0"][LINEIDX]
     print('TRACING FOR ',restwav)
 
-    model_cache = ModelSetup(ds, ps, Constants(), atomfield, dexcfg, LINEIDX, ATOM)
-    
+    model_cache = ModelSetup(ds, ps, Constants(), atomfield, dexcfg, LINEIDX)
+    #PULL OUT SPEC AXIS
+    wave_array = model_cache.wavenp
     #CREATE A TRACEDEX3D OBJECT WITH A CUSTOM TRANSFER FUNCTION
     @ti.data_oriented
     class TraceDex3dDoubleTransfer(TraceDex3d):
@@ -90,6 +91,7 @@ if __name__ == "__main__":
 
     gui = ti.GUI("TraceTime", WINDOW_SIZE)
     gui_buffer = ti.field(vec3, shape=WINDOW_SIZE)
+    out_buffer = ti.field(vec3, shape=(cam.x_size, cam.y_size))
     spectrum_buffer = ti.field(vec4, shape=WAVESTEPS)
     specsegments = spectrum_buffer.to_numpy()
 
@@ -106,7 +108,6 @@ if __name__ == "__main__":
     gamma.value = 2.2
     #SLIDERS
     blur_width = gui.slider("PSF FWHM", 0.0, BLUR_KERNEL_SIZE // 2)
-    cam_dist = 1e3
     blur_buffer = ti.field(vec3, shape=(cam.x_size, cam.y_size))
     blur_kernel = ti.field(ti.f32, shape=(BLUR_KERNEL_SIZE))
     wing_slider = gui.slider("Wing Sample", 1, (WAVESTEPS//2)-1)
@@ -115,6 +116,7 @@ if __name__ == "__main__":
     #DEFAULT SLIT/POINTER POSITION
     slit_position = WINDOW_SIZE[0]//2
     default_pos = vec2(CAM_WIDTH//2, CAM_HEIGHT//2)
+    default_dir = vec2(1.0,0.0)
     pos = default_pos
 
     frame = 0
@@ -123,11 +125,15 @@ if __name__ == "__main__":
     phi_in = phi_slider.value
     sticky_pixel = 0
     scancomplete = 0
+    scancount = 0
     clicked = 0
     noslitdraw = 0
     free_slit = 0
     force_scan = 0
     lookat_modcen = 1
+    saving = 0
+    savesout = 0
+    exit = 0
     deadzone = (SPEC_WIDTH + VIEWER_WIDTH)/WINDOW_SIZE[0]
     target = vec3(0.0)
     current_marker = vec2(0.0)
@@ -146,25 +152,25 @@ if __name__ == "__main__":
 
         phi = np.deg2rad(phi_slider.value)
         r = vec3(np.cos(theta) * np.sin(phi), np.sin(theta) * np.sin(phi), np.cos(phi))
-
+        #CAMERA POSITIONING
         if frame == 0:
             #LOOKAT MODEL CENTRE
-            trslit.set_pos(vec2(1.0,0.0), vec2(CAM_WIDTH//2, CAM_HEIGHT//2))
+            trslit.set_pos(default_dir, vec2(CAM_WIDTH//2, CAM_HEIGHT//2))
             target = target_centre
-            cam.set_centre(tracer.aabb // 2 + r * cam_dist).look_at(target)
+            cam.set_centre(tracer.aabb // 2 + r * CAM_DIST).look_at(target)
 
         if clicked == 2:
             #SET CAMERA POSITION WITH RMB LOOK AT LOCATION
-            trslit.set_pos(vec2(1.0,0.0), vec2(CAM_WIDTH//2, CAM_HEIGHT//2))
+            trslit.set_pos(default_dir, vec2(CAM_WIDTH//2, CAM_HEIGHT//2))
             if sticky_pixel != 0:
                 target = trslit.contact[sticky_pixel]
-                cam.set_centre(tracer.aabb // 2 + r * cam_dist).look_at(target)
+                cam.set_centre(tracer.aabb // 2 + r * CAM_DIST).look_at(target)
             force_scan = 1
 
         if clicked == 0:
             #DEFAULT MODE - STAY ON TARGET
-            cam.set_centre(tracer.aabb // 2 + r * cam_dist).look_at(target)
-            
+            cam.set_centre(tracer.aabb // 2 + r * CAM_DIST).look_at(target)
+
         dframe = frame % 2
         #ALTERNATELY FILL SPECTRAL WINDOW
         iframe = frame % WAVESTEPS
@@ -179,6 +185,7 @@ if __name__ == "__main__":
         if iwave == 0:
             iwave = CENWAV
             scancomplete = 1
+            scancount += 1
 
         #RUN THE TRACE
         if dviewer == 0:
@@ -207,91 +214,94 @@ if __name__ == "__main__":
                 mode=0,
             ) # just image
 
-        #GET VIEWER POSITION
-        if gui.is_pressed(ti.GUI.LMB):
-            fx, fy = gui.get_cursor_pos()
-            vx = fx*WINDOW_SIZE[0] - SPEC_WIDTH 
-            vy = fy*WINDOW_SIZE[1] - VERTICAL_PAD
-            pos = viz.win2cam(vx,vy,VIEWER_SIZE,CAM_SIZE)
-        elif gui.is_pressed(ti.GUI.RMB):
-            fx, fy = gui.get_cursor_pos()
-            vx = fx*WINDOW_SIZE[0] - SPEC_WIDTH
-            vy = fy*WINDOW_SIZE[1] - VERTICAL_PAD
-            pos = viz.win2cam(vx,vy,VIEWER_SIZE,CAM_SIZE)
+        if saving != 1: #NO BUTTONS WHEN SAVING
+            if gui.is_pressed(ti.GUI.LMB):
+                fx, fy = gui.get_cursor_pos()
+                vx = fx*WINDOW_SIZE[0] - SPEC_WIDTH 
+                vy = fy*WINDOW_SIZE[1] - VERTICAL_PAD
+                pos = viz.win2cam(vx,vy,VIEWER_SIZE,CAM_SIZE)
+            elif gui.is_pressed(ti.GUI.RMB):
+                fx, fy = gui.get_cursor_pos()
+                vx = fx*WINDOW_SIZE[0] - SPEC_WIDTH
+                vy = fy*WINDOW_SIZE[1] - VERTICAL_PAD
+                pos = viz.win2cam(vx,vy,VIEWER_SIZE,CAM_SIZE)
 
-        elif gui.is_pressed('d', ti.GUI.LEFT):
-            theta_slider.value += 1
-            clicked = 0
-        elif gui.is_pressed('d', ti.GUI.RIGHT):
-            theta_slider.value -= 1
-            clicked = 0
-        elif gui.is_pressed('d', ti.GUI.UP):
-            phi_slider.value += 1
-            clicked = 0
-        elif gui.is_pressed('d', ti.GUI.DOWN):
-            phi_slider.value -= 1
-            clicked = 0
+            elif gui.is_pressed('a', ti.GUI.LEFT):
+                theta_slider.value += 1
+                clicked = 0
+            elif gui.is_pressed('d', ti.GUI.RIGHT):
+                theta_slider.value -= 1
+                clicked = 0
+            elif gui.is_pressed('s', ti.GUI.DOWN):
+                phi_slider.value += 1
+                clicked = 0
+            elif gui.is_pressed('w', ti.GUI.UP):
+                phi_slider.value -= 1
+                clicked = 0
 
-        for e in events:
-            #MOUSE RELEASES
-            if e.type == ti.GUI.RELEASE:
-                if e.key == 'LMB':
-                    #new slit position without tracking
-                    if fx < deadzone:
-                        trslit.set_pos(vec2(1.0,0.0), vec2(pos.x, CAM_HEIGHT//2))
-                        clicked = 1
+            for e in events:
+                #MOUSE RELEASES
+                if e.type == ti.GUI.RELEASE:
+                    if e.key == 'LMB':
+                        #new slit position without tracking
+                        if fx < deadzone:
+                            #trslit.set_cen(vec2(pos.x, CAM_HEIGHT//2))
+                            trslit.set_pos(default_dir, vec2(pos.x, CAM_HEIGHT//2))
+                            clicked = 1
 
-                if e.key == 'RMB':
-                    #TRACE AT CLICK LOCATION TO GET CONTACT
-                    if fx < deadzone:
-                        trslit.set_pos(vec2(1.0,0.0), vec2(pos.x, CAM_HEIGHT//2))
-                        tracer.trace_for_camera(
-                            cam=cam,
-                            slit=trslit,
-                            waveindex = wavepointer,
-                            step_size=1,
-                            mode=3,
-                        )
-                        click = int(pos.y)
-                        pt = trslit.contact[click]
-                        if vec3(1.0,1.0,1.0) @ pt > 0:
-                            sticky_pixel = click
-                        else:
-                            sticky_pixel = 0
-                        noslitdraw = 1
-                        clicked = 2
+                    if e.key == 'RMB':
+                        #TRACE AT CLICK LOCATION TO GET CONTACT
+                        if fx < deadzone:
+                            trslit.set_pos(default_dir, vec2(pos.x, CAM_HEIGHT//2))
+                            tracer.trace_for_camera(
+                                cam=cam,
+                                slit=trslit,
+                                waveindex = wavepointer,
+                                step_size=1,
+                                mode=3,
+                            )
+                            click = int(pos.y)
+                            pt = trslit.contact[click]
+                            if vec3(1.0,1.0,1.0) @ pt > 0:
+                                sticky_pixel = click
+                            else:
+                                sticky_pixel = 0
+                            noslitdraw = 1
+                            clicked = 2
+                            pos = default_pos
+
+                    #ADDITIONAL KEYBAORD PRESSES
+                    if e.key == ti.GUI.ESCAPE:
+                        #gui.close()
+                        print('Goodbye!')
+                        exit = 1
+                    if e.key == 'p':
+                        saving = 1
+                        scancount = 0
+                        print('Writing to file...')
+                    if e.key == 'f':
+                        sticky_pixel = 0
+                        target = target_centre
+                        clicked = 0
+                        print('Re-centre')
                         pos = default_pos
-
-                #ADDITIONAL KEYBAORD PRESSES
-                if e.key == ti.GUI.ESCAPE:
-                    gui.close()
-                    print('Goodbye!')
-                if e.key == 's':
-                    print(pos.y)
-                    print('Saved spectral profile')
-                if e.key == 'f':
-                    sticky_pixel = 0
-                    target = target_centre
-                    clicked = 0
-                    print('Re-centre')
-                    pos = default_pos
-                    trslit.set_pos(vec2(1.0,0.0), default_pos)
-                    current_marker = vec2(xcen,ycen)
-                if e.key == 'h':
-                    sticky_pixel = 0
-                    target = target_centre
-                    clicked = 0
-                    theta_slider.value = 0
-                    phi_slider.value = 90
-                    pos = default_pos
-                    trslit.set_pos(vec2(1.0,0.0), default_pos)
-                    current_marker = vec2(xcen,ycen)
-                    print('Home view')
+                        trslit.set_pos(default_dir, default_pos)
+                        current_marker = vec2(xcen,ycen)
+                    if e.key == 'h':
+                        sticky_pixel = 0
+                        target = target_centre
+                        clicked = 0
+                        theta_slider.value = 0
+                        phi_slider.value = 90
+                        pos = default_pos
+                        trslit.set_pos(default_dir, default_pos)
+                        current_marker = vec2(xcen,ycen)
+                        print('Home view')
 
         #TONE MAP THE TRACE FRAME BUFFER
         if irgb == 2:
             viz.clear_buffer(gui_buffer, VIEWER_AABB, 2)
-            viz.tonemap_and_blit(tracer.fb, 1.0 / bias.value, white_point.value, gamma.value, blur_width.value, blur_buffer, blur_kernel, gui_buffer, VIEWER_AABB)
+            viz.tonemap_and_blit(tracer.fb, 1.0 / bias.value, white_point.value, gamma.value, blur_width.value, blur_buffer, blur_kernel, gui_buffer, out_buffer, VIEWER_AABB)
         if dviewer == 0:
             viz.spectrum_to_frame_buffer(tracer.wb, gui_buffer, SPECTRA_AABB, 1.0 / bias.value, white_point.value, gamma.value)
             viz.draw_wing_markers(CENWAV, WAVESTEPS, int(WINGDIST), gui_buffer, SPECTRA_AABB)
@@ -300,11 +310,62 @@ if __name__ == "__main__":
             viz.draw_spectra_plot(tracer.wb, gui_buffer, spectrum_buffer, pos, PLOT_AABB, 0.0, 8.0, 0)
         #draw slit onto the main window / gui buffer
         if noslitdraw == 0:
-            viz.draw_slit_gui(trslit, trslit.dir, gui_buffer, VIEWER_AABB, CAM_SIZE, VIEWER_SIZE)
+            viz.draw_slit_gui(trslit, trslit.dir[0], gui_buffer, VIEWER_AABB, CAM_SIZE, VIEWER_SIZE)
         else:
             #hold drawing the slit when RMB released until the next frame
             noslitdraw = 0
 
+        #SAVING
+        if saving == 1 and scancount == 2:
+            #current_window = tracer.fb.to_numpy()
+            current_window = out_buffer.to_numpy()
+            current_spectra = tracer.wb.to_numpy()
+            cennow = trslit.cen[0].to_numpy()
+            dirnow = trslit.dir[0].to_numpy()
+            
+            wfile = MODEL_ROOT /  Path("window_save_"+str(savesout)+".nc")
+            sfile = MODEL_ROOT /  Path("spec_save_"+str(savesout)+".nc")
+            dsetspec = xr.Dataset(
+                {"data": (("angstroms", "pixels"), current_spectra[:,:,1])},
+                coords={
+                    "pixels": np.arange(SLIT_RES),
+                    "angstroms": wave_array,
+                },
+                attrs={
+                    "slit_resolution": SLIT_RES,
+                    "slit_length": CAM_HEIGHT,
+                    "wave_pixels": WAVESTEPS,
+                    "slit_centre": cennow,
+                    "slit_dir": dirnow
+                },
+            )
+            dsetspec.to_netcdf(sfile)
+            print('Image window saved to: ', sfile)
+
+            dsetimg = xr.Dataset(
+                {"data": (("cam_x", "cam_y", "channel"), current_window)},
+                coords={
+                    "cam_x": np.arange(CAM_WIDTH),
+                    "cam_y": np.arange(CAM_HEIGHT),
+                    "channel": ["r","g","b"]
+                },
+                attrs={
+                    "cam_x": CAM_WIDTH,
+                    "cam_y": CAM_HEIGHT,
+                    "model_x": ds.num_x,
+                    "model_y": ds.num_y,
+                    "model_z": ds.num_z,
+                    "cam_target": list(target),
+                    "cam_centre": list(cam.centre)
+                },
+            )
+            dsetimg.to_netcdf(wfile)
+            print('Spectral window saved to: ', wfile)
+            scancount = 0
+            savesout += 1
+            saving = 0
+
+        #GUI MARKERS
         if clicked == 1:
             current_marker = vec2(fx,fy)
         if clicked == 2 or frame == 0:
@@ -320,3 +381,6 @@ if __name__ == "__main__":
 
         gui.show()
         frame += 1
+        if exit == 1:
+            gui.close()
+            break

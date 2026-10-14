@@ -344,7 +344,6 @@ class TraceDex3d:
     @ti.func
     def naive_sparse_trace_mod(self, o: vec3, d: vec3, ts: vec2, back: TI_FP = 0.0, step_size: ti.f32 = 0.2) -> SparseHit:
         t = ts[0]
-
         result = vec3(0.0)
         hit0 = vec3(0.0)
         tau_running = 0.0
@@ -468,7 +467,6 @@ class TraceDex3d:
                 break
         return result
 
-
     @ti.kernel
     def trace(self, buffer:ti.template(), supersample: int, corner: vec3, right: vec3, up: vec3, forward: vec3, step_size: ti.f32, waveindex:TI_FP, outchannel:TI_INT):
         num_aa_samples = self.cam.supersample if USE_MSAA else supersample**2
@@ -524,7 +522,6 @@ class TraceDex3d:
                 buffer[I][outchannel] = radiance[outchannel] / num_aa_samples
             else:
                 buffer[I] = radiance / num_aa_samples
-
 
     @ti.kernel
     def trace_slit(self, buffer:ti.template(), slit:ti.template(), supersample: int, corner: vec3, right: vec3, up: vec3, forward: vec3, step_size: ti.f32, waveindex: vec3, storefirst: TI_INT):

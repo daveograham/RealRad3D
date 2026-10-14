@@ -101,7 +101,7 @@ class TaiAtom:
 
 @ti.data_oriented
 class ModelSetup:
-    def __init__(self, ds, ps, constants, atomdata, dexcfg, lineindex, ATOM):
+    def __init__(self, ds, ps, constants, atomdata, dexcfg, lineindex):
         if ds.program != "dexrt (3d)":
             print("Program tag does not appear to be \"dexrt (3d)\", are you sure this is the right file?")
         if ds.output_format != "sparse":
@@ -122,7 +122,7 @@ class ModelSetup:
         self.restwav = atomdata.line_lambda0[lineindex]
         self.nlevels = atomdata.g.shape[0]
         self.lineindex = lineindex
-        ###
+
         #set up wavelength array
         self.wavenp = self.wave_array(self.restwav, WAVESTEPS, WAVEDELTA)
 
@@ -131,7 +131,6 @@ class ModelSetup:
         self.wav_profile.from_numpy(self.wavenp.astype(PY_FP))
         self.wav_basis = ti.field(dtype=TI_FP, shape=self.wdim)
         self.wav_basis.from_numpy(np.arange(self.wdim, dtype=PY_FP))
-        ###
 
         self.temp = ti.field(dtype=TI_FP, shape=(self.num_active_tiles * self.block_size**3,))
         self.temp.from_numpy(ds.temperature.values.astype(PY_FP))
@@ -154,7 +153,6 @@ class ModelSetup:
         self.get_doppler_width()
         self.gamma = ti.field(dtype=TI_FP, shape=(self.num_active_tiles * self.block_size**3,))
         self.get_gamma(lineindex)
-
 
         #GET SOME LEVEL INFO
         atomkey = list(dexcfg['atoms'].keys())
@@ -188,7 +186,6 @@ class ModelSetup:
         #intensity lookup = atmosdata.prom_bc_I.values
         self.boundary_lookup = ti.field(dtype=TI_FP, shape=(ds.prom_bc_I.values.shape[0], ds.prom_bc_I.values.shape[1]))
         self.boundary_lookup.from_numpy(ds.prom_bc_I.values.astype(PY_FP))
-
 
     def wave_lookup(self, wavarr, wav_lookup):
         '''Interpolate tracer wavelength range onto boundary intensity lookup table axis.
@@ -256,16 +253,23 @@ class ModelSetup:
 
 @ti.data_oriented
 class Slit:
-    def __init__(self, slitres, slitwidth, cen):
+    def __init__(self, slitres, slitwidth):
         '''setup slit and intensity fields - Slit resolution (slitres), Slit pixel width (slitwidth),
           line profile pixel width (wavdim) model x and y dimensions (xdim ydim) - all model coordinates'''
         self.res = slitres
         self.width = slitwidth
         self.slit_field = ti.field(dtype=vec2, shape=self.res)
+        self.cen = ti.field(dtype=vec2, shape=1)
+        self.dir = ti.field(dtype=vec2, shape=1)
+        
         #SETUP DEFAULT SLIT
-        self.dir = vec2(1.0,0.0)
-        self.cen = vec2(cen[0], cen[1])
-        self.set_pos(self.dir, self.cen)
+        default_dir = vec2(1.0,0.0)
+        default_cen = vec2(CAM_WIDTH/2, CAM_HEIGHT//2)
+
+        self.cen[0] = default_cen        
+        self.dir[0] = default_dir
+        
+        self.set_pos(default_dir, default_cen)
         self.contact = ti.field(dtype=vec3, shape=slitres) #store first ray hit location
 
     @ti.kernel
@@ -291,6 +295,8 @@ class Slit:
             #move to slit center location
             startpix = prot + center
             self.slit_field[i] = startpix
+        self.cen[0] = center
+        self.dir[0] = dir
 
 @ti.func
 def ihighbound(x: float, xbase: ti.template()):
