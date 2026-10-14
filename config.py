@@ -5,8 +5,7 @@ ELEMENT = 'Mg'
 LINEIDX = 0
 
 #The cloned package path
-TRACER_ROOT = "C:/Users/dg130t/Home/rttools/RealRad3D/"
-#TRACER_ROOT = "C:/Users/mypath/"
+TRACER_ROOT = "C:/Users/mypath/"
 
 TRANSFER_CENTRE_VAL = 4
 TRANSFER_CENTRE_WIDTH = 0.1
